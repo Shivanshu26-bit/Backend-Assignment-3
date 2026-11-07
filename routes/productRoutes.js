@@ -91,4 +91,223 @@ router.get("/", async (req, res, next) => {
     }
 });
 
+// LOW-STOCK ALERT REPORT
+router.get("/low-stock", async (req, res, next) => {
+    try {
+        const lowStockItems = await Product.find({
+            $expr: {
+                $lte: ["$quantity", "$reorderLevel"]
+            }
+        }).sort({ quantity: 1 });
+
+        res.status(200).json({
+            count: lowStockItems.length,
+            lowStockItems
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+// CATEGORY-WISE INVENTORY SUMMARY
+router.get("/summary", async (req, res, next) => {
+    try {
+        const summary = await Product.aggregate([
+            {
+                $group: {
+                    _id: "$category",
+
+                    totalItems: {
+                        $sum: 1
+                    },
+
+                    totalQuantity: {
+                        $sum: "$quantity"
+                    },
+
+                    totalStockValue: {
+                        $sum: {
+                            $multiply: ["$price", "$quantity"]
+                        }
+                    },
+
+                    avgPrice: {
+                        $avg: "$price"
+                    }
+                }
+            },
+            {
+                $sort: {
+                    _id: 1
+                }
+            },
+            {
+                $project: {
+                    _id: 1,
+                    totalItems: 1,
+                    totalQuantity: 1,
+                    totalStockValue: {
+                        $round: ["$totalStockValue", 2]
+                    },
+                    avgPrice: {
+                        $round: ["$avgPrice", 2]
+                    }
+                }
+            }
+        ]);
+
+        res.status(200).json({
+            categories: summary.length,
+            summary
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+// GET SINGLE PRODUCT BY ID
+router.get("/:id", async (req, res, next) => {
+    try {
+        const product = await Product.findById(req.params.id);
+
+        if (!product) {
+            return res.status(404).json({
+                message: "Product not found"
+            });
+        }
+
+        res.status(200).json(product);
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+
+// UPDATE PRODUCT
+router.put("/:id", async (req, res, next) => {
+    try {
+        const allowedFields = [
+            "name",
+            "sku",
+            "category",
+            "price",
+            "quantity",
+            "reorderLevel",
+            "supplier"
+        ];
+
+        const updates = {};
+
+        allowedFields.forEach((field) => {
+            if (req.body[field] !== undefined) {
+                updates[field] = req.body[field];
+            }
+        });
+
+        if (Object.keys(updates).length === 0) {
+            return res.status(400).json({
+                message: "No valid fields provided for update"
+            });
+        }
+
+        const product = await Product.findByIdAndUpdate(
+            req.params.id,
+            { $set: updates },
+            {
+                new: true,
+                runValidators: true
+            }
+        );
+
+        if (!product) {
+            return res.status(404).json({
+                message: "Product not found"
+            });
+        }
+
+        res.status(200).json(product);
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+// DELETE PRODUCT
+router.delete("/:id", async (req, res, next) => {
+    try {
+        const product = await Product.findByIdAndDelete(
+            req.params.id
+        );
+
+        if (!product) {
+            return res.status(404).json({
+                message: "Product not found"
+            });
+        }
+
+        res.status(200).json({
+            message: "Product deleted successfully",
+            id: product._id
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
+
+// STOCK ADJUSTMENT
+router.patch("/:id/stock", async (req, res, next) => {
+    try {
+        const { change } = req.body;
+
+        // Validate stock change
+        if (!Number.isInteger(change) || change === 0) {
+            return res.status(400).json({
+                message: "Change must be a non-zero integer"
+            });
+        }
+
+        // Prevent negative stock using an atomic update
+        const filter = { _id: req.params.id };
+
+        if (change < 0) {
+            filter.quantity = { $gte: Math.abs(change) };
+        }
+
+        const product = await Product.findOneAndUpdate(
+            filter,
+            { $inc: { quantity: change } },
+            { new: true }
+        );
+
+        if (!product) {
+            const exists = await Product.exists({
+                _id: req.params.id
+            });
+
+            if (!exists) {
+                return res.status(404).json({
+                    message: "Product not found"
+                });
+            }
+
+            return res.status(400).json({
+                message: "Insufficient stock"
+            });
+        }
+
+        res.status(200).json({
+            message: "Stock updated successfully",
+            product
+        });
+
+    } catch (error) {
+        next(error);
+    }
+});
+
 module.exports = router;
