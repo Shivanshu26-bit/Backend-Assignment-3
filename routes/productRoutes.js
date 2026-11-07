@@ -217,9 +217,9 @@ router.put("/:id", async (req, res, next) => {
             req.params.id,
             { $set: updates },
             {
-                new: true,
-                runValidators: true
-            }
+    returnDocument: "after",
+    runValidators: true
+}
         );
 
         if (!product) {
@@ -262,7 +262,7 @@ router.delete("/:id", async (req, res, next) => {
 // STOCK ADJUSTMENT
 router.patch("/:id/stock", async (req, res, next) => {
     try {
-        const { change } = req.body;
+        const { change } = req.body || {};
 
         // Validate stock change
         if (!Number.isInteger(change) || change === 0) {
@@ -281,7 +281,7 @@ router.patch("/:id/stock", async (req, res, next) => {
         const product = await Product.findOneAndUpdate(
             filter,
             { $inc: { quantity: change } },
-            { new: true }
+            { returnDocument: "after" }
         );
 
         if (!product) {
