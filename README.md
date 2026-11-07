@@ -40,7 +40,7 @@ I used MongoDB Atlas for the database, Express to handle the requests, and Mongo
 I used the MongoDB aggregation pipeline for this one. It gives:
 - Total products in each category
 - Total quantity in each category
-- Total stock value of the whole inventory
+- Total stock value of products in each category.
 - Average product price
 
 **Error handling**
